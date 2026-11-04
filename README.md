@@ -24,3 +24,7 @@ claude plugin install barra-utilizzo --marketplace MattiaScamperle/barra-utilizz
 ```
 
 Nell'app desktop, dove `/plugin` non è disponibile: clicca + accanto alla casella del prompt, poi Plugins, Add marketplace con `MattiaScamperle/barra-utilizzo`, poi Add plugin.
+
+## Licenza
+
+Distribuita con licenza MIT, vedi [LICENSE](LICENSE).

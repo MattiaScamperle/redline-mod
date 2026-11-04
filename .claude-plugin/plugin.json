@@ -1,6 +1,7 @@
 {
   "name": "barra-utilizzo",
   "version": "0.1.0",
+  "license": "MIT",
   "description": "Banda sopra il prompt con limite di 5 ore, limite settimanale e riempimento del contesto, colori dinamici e bottone Compatta",
   "types": "./types/index.d.ts"
 }
