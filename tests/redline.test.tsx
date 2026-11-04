@@ -68,6 +68,40 @@ test('il rosso arriva a 100% e i limiti mancanti sono n/d', async ($, on) => {
   await ui.unmount()
 })
 
+test('dopo una compattazione il contesto mostra la stima finché non arriva una risposta', async ($, on) => {
+  let measured = false
+  let estimates = 0
+  const clock = mock.clock(on)
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('session.usage', (_, e) => {
+    if (e.breakdown === 'summary') estimates += 1
+    const context = measured
+      ? { tokens: 50_000, window: 200_000, percent: 25 }
+      : {
+          window: 200_000,
+          breakdown: e.breakdown === 'summary' ? ({ totalTokens: 30_000 } as never) : undefined,
+        }
+    return { value: { startedAt: '2099-01-01T00:00:00Z', context, rateLimits: [] } as never }
+  })
+
+  await $.session.start({ cwd: '/progetto', surface: 'desktop', isInteractive: true })
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  expect(await ui.find({ type: 'Text', text: '~30k / 200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '15%' })).toBeDefined()
+
+  // La stima non si ricalcola a ogni giro.
+  const first = estimates
+  await clock.advance(5000)
+  expect(estimates).toBe(first)
+
+  measured = true
+  await clock.advance(5000)
+  expect(await ui.find({ type: 'Text', text: '50k / 200k' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '25%' })).toBeDefined()
+  await ui.unmount()
+})
+
 test('una finestra da un milione si scrive 1M', async ($, on) => {
   on('session.measure', (_, e) => ({ changed: e.changed }))
   mock.store(on)

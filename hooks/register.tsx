@@ -10,6 +10,7 @@ const minute = atom({ plugin: 'redline-mod', key: 'minute' } as const, 0)
 const CELLS = 8
 const REFRESH_MS = 5000
 const PROBE_GAP_MS = 2 * 60_000
+const ESTIMATE_GAP_MS = 60_000
 
 type Rgb = [number, number, number]
 
@@ -24,8 +25,9 @@ function toUsage(context: SessionContextUsage, rateLimits: SessionRateLimit[]): 
   const week = rateLimits.find(limit => limit.kind === 'seven_day')
 
   return {
-    contextPercent: context.percent,
+    contextPercent: estimatedPercent(context),
     contextTokens: context.tokens,
+    contextEstimated: context.tokens !== undefined && context.percent === undefined ? true : undefined,
     contextWindow: context.window,
     fiveHourPercent: fiveHour?.percentUsed,
     fiveHourResetsAt: fiveHour?.resetsAt,
@@ -75,6 +77,38 @@ function resetIn(resetsAt: string, now: number): string | null {
   return h > 0 ? `reset ${h}h ${m}m` : `reset ${m}m`
 }
 
+
+// Dopo una compattazione (e in una chat nuova) il motore non conosce il
+// contesto finché non arriva la risposta successiva: tokens e percent
+// mancano. Intanto si usa la stima locale di /context, senza richieste di
+// rete, ricalcolata al massimo una volta al minuto.
+let estimate: { tokens: number; at: number } | null = null
+
+async function withEstimate($: EngineInterface, context: SessionContextUsage): Promise<SessionContextUsage> {
+  if (context.tokens !== undefined) {
+    estimate = null
+    return context
+  }
+
+  const now = await $.clock.now()
+  if (!estimate || now - estimate.at >= ESTIMATE_GAP_MS) {
+    try {
+      const { context: counted } = await $.session.usage({ breakdown: 'summary' })
+      const total = counted.breakdown?.totalTokens
+      if (total !== undefined) estimate = { tokens: total, at: now }
+    } catch {
+      // Senza stima la barra resta vuota fino alla prossima risposta.
+    }
+  }
+
+  // tokens senza percent: toUsage lo segna come stimato.
+  return estimate ? { ...context, tokens: estimate.tokens } : context
+}
+
+function estimatedPercent(context: SessionContextUsage): number | undefined {
+  if (context.percent !== undefined) return context.percent
+  return context.tokens === undefined ? undefined : Math.round((context.tokens / context.window) * 100)
+}
 
 type SharedLimits = { limits: SessionRateLimit[]; at: number }
 
@@ -164,7 +198,8 @@ export const register: Register = on => {
     const refresh = async () => {
       try {
         const current = await $.session.usage()
-        const fresh = toUsage(current.context, await shareLimits($, current.rateLimits))
+        const context = await withEstimate($, current.context)
+        const fresh = toUsage(context, await shareLimits($, current.rateLimits))
         await update($, usage, prev => (same(prev, fresh) ? prev : fresh))
 
         const now = Math.floor((await $.clock.now()) / 60000)
@@ -191,7 +226,8 @@ export const register: Register = on => {
 
   on('session.measure', async ($, e, next) => {
     const limits = await shareLimits($, e.rateLimits)
-    await update($, usage, () => toUsage(e.context, limits))
+    const context = await withEstimate($, e.context)
+    await update($, usage, () => toUsage(context, limits))
 
     return next(e)
   })
@@ -254,7 +290,7 @@ export const register: Register = on => {
     const context =
       current.contextTokens === undefined
         ? `finestra ${tokens(current.contextWindow)}`
-        : `${tokens(current.contextTokens)} / ${tokens(current.contextWindow)}`
+        : `${current.contextEstimated ? '~' : ''}${tokens(current.contextTokens)} / ${tokens(current.contextWindow)}`
 
     return (
       <Box

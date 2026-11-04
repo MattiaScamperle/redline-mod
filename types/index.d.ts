@@ -1,6 +1,8 @@
 export type Usage = {
   contextPercent?: number
   contextTokens?: number
+  // Stima locale: il motore non ha ancora misurato il contesto (dopo una compattazione).
+  contextEstimated?: boolean
   contextWindow: number
   fiveHourPercent?: number
   fiveHourResetsAt?: string
