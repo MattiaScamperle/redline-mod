@@ -27,4 +27,4 @@ Nell'app desktop, dove `/plugin` non è disponibile: clicca + accanto alla casel
 
 ## Licenza
 
-Distribuita con licenza MIT, vedi [LICENSE](LICENSE).
+Copyright (c) 2026 MattiaScamperle. Distribuita con licenza GNU GPL v3 (GPL-3.0-only), vedi [LICENSE](LICENSE).
