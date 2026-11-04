@@ -1,5 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
+import { compactErrorText, compactNow } from '../hooks/register'
+
 const BAND = {
   plugin: 'redline-mod',
   component: 'AbovePrompt',
@@ -130,13 +132,13 @@ test('il bottone Compatta compatta il contesto', async ($, on) => {
   await ui.unmount()
 })
 
-test('durante una risposta il bottone resta e spiega perché non compatta', async ($, on) => {
+test('se la compattazione fallisce il bottone mostra l\'errore e torna Compatta', async ($, on) => {
   const toasts: string[] = []
   on('session.measure', (_, e) => ({ changed: e.changed }))
   mock.store(on)
   on('clock.now', () => ({ value: 0 }))
   on('session.compact', () => {
-    throw new Error('a turn is running')
+    throw new Error('rotto')
   })
   on('ui.toast', (_, e) => {
     toasts.push(e.text)
@@ -144,7 +146,7 @@ test('durante una risposta il bottone resta e spiega perché non compatta', asyn
   })
 
   await $.session.measure({
-    context: { window: 200_000, percent: 10 },
+    context: { window: 200_000, percent: 80 },
     rateLimits: [],
     changed: ['context'],
   })
@@ -152,8 +154,84 @@ test('durante una risposta il bottone resta e spiega perché non compatta', asyn
   const ui = await $.ui.mount({ ...BAND, props: { ...BAND.props, isWorking: true }, surface: 'desktop' })
   await ui.press({ key: 'compatta' })
 
-  expect(toasts).toEqual(['Compattazione possibile solo a fine risposta'])
+  expect(toasts).toHaveLength(1)
+  expect(toasts[0]?.startsWith('Compattazione non riuscita: ')).toBe(true)
+  expect((await ui.find({ type: 'Button', key: 'compatta' }))?.props.label).toBe('Compatta')
   await ui.unmount()
+})
+
+// Il kit salta un hook che lancia, quindi qui $.session.compact che rifiuta
+// con il testo del motore si prova con un $ finto.
+function fakeEngine(rejectWith: string | null) {
+  const calls = { compact: 0, commands: [] as string[], toasts: [] as string[] }
+  const engine = {
+    session: {
+      compact: async () => {
+        calls.compact += 1
+        if (rejectWith !== null) throw new Error(`redline-mod: $.session.compact: ${rejectWith}`)
+        return { messages: [] }
+      },
+    },
+    command: {
+      run: async (input: { command: string }) => {
+        calls.commands.push(input.command)
+        return {}
+      },
+    },
+    ui: {
+      toast: (text: string) => {
+        calls.toasts.push(text)
+      },
+    },
+  }
+  return { calls, $: engine as unknown as Parameters<typeof compactNow>[0] }
+}
+
+test('nella chat desktop (SDK) Compatta accoda /compact', async () => {
+  const { calls, $ } = fakeEngine(
+    'not available in a headless (-p / SDK) session yet: compaction here runs inside a turn (a /compact prompt); catch it and carry on',
+  )
+
+  await compactNow($)
+
+  expect(calls.compact).toBe(1)
+  expect(calls.commands).toEqual(['compact'])
+  expect(calls.toasts).toEqual([])
+})
+
+test('nel terminale Compatta compatta direttamente', async () => {
+  const { calls, $ } = fakeEngine(null)
+
+  await compactNow($)
+
+  expect(calls.compact).toBe(1)
+  expect(calls.commands).toEqual([])
+})
+
+test('durante una risposta Compatta spiega perché non compatta', async () => {
+  const { calls, $ } = fakeEngine('a turn is in flight; the conversation compacts between turns')
+
+  const error = await compactNow($).then(
+    () => undefined,
+    (err: unknown) => err,
+  )
+
+  expect(calls.commands).toEqual([])
+  expect(compactErrorText(error)).toBe('Compattazione possibile solo a fine risposta')
+})
+
+test('un altro errore di compattazione mostra il suo messaggio', async () => {
+  const { calls, $ } = fakeEngine('the compaction produced no summary')
+
+  const error = await compactNow($).then(
+    () => undefined,
+    (err: unknown) => err,
+  )
+
+  expect(calls.commands).toEqual([])
+  expect(compactErrorText(error)).toBe(
+    'Compattazione non riuscita: redline-mod: $.session.compact: the compaction produced no summary',
+  )
 })
 
 test('senza misure la banda lascia il posto al motore', async ($, on) => {
@@ -194,5 +272,46 @@ test('una chat senza letture usa gli ultimi limiti salvati da un\'altra chat', a
   expect(await ui.find({ type: 'Text', text: '33%' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: '71%' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'n/d' })).toBeUndefined()
+  await ui.unmount()
+})
+
+test("all'avvio senza limiti una sola richiesta minima li carica subito", async ($, on) => {
+  let calls = 0
+  const clock = mock.clock(on, { now: Date.parse('2098-12-31T21:45:00Z') })
+  mock.store(on)
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('model.complete', (_, e) => {
+    calls += 1
+    expect(e.model).toBe('haiku')
+    return {
+      value: {
+        isAnswered: true,
+        text: 'ok',
+        usage: { input_tokens: 1, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 },
+      },
+    }
+  })
+  on('session.usage', () => ({
+    value: {
+      startedAt: '2099-01-01T00:00:00Z',
+      context: { tokens: 20_000, window: 200_000, percent: 10 },
+      rateLimits:
+        calls === 0
+          ? []
+          : [
+              { kind: 'five_hour', percentUsed: 12, resetsAt: '2099-01-01T00:00:00Z' },
+              { kind: 'seven_day', percentUsed: 73, resetsAt: '2099-01-03T23:45:00Z' },
+            ],
+    },
+  }))
+
+  await $.session.start({ cwd: '/progetto', surface: 'desktop', isInteractive: true })
+  await $.session.start({ cwd: '/altro', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+
+  expect(calls).toBe(1)
+  expect(await ui.find({ type: 'Text', text: '12%' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: '73%' })).toBeDefined()
   await ui.unmount()
 })

@@ -9,6 +9,7 @@ const minute = atom({ plugin: 'redline-mod', key: 'minute' } as const, 0)
 
 const CELLS = 8
 const REFRESH_MS = 5000
+const PROBE_GAP_MS = 2 * 60_000
 
 type Rgb = [number, number, number]
 
@@ -99,6 +100,57 @@ async function shareLimits($: EngineInterface, limits: SessionRateLimit[]): Prom
   return stored.limits.filter(limit => !limit.resetsAt || Date.parse(limit.resetsAt) > now)
 }
 
+type Probe = { at: number; answered?: boolean; error?: string; gotLimits?: boolean }
+
+// All'avvio dell'app nessuna chat ha ancora ricevuto una risposta, quindi i
+// limiti esatti mancano. Una richiesta minima a Haiku li porta con sé; lo
+// store fa sì che la faccia una sola chat ogni due minuti, non tutte insieme.
+async function probeLimits($: EngineInterface): Promise<void> {
+  const now = await $.clock.now()
+  const last = (await $.store.get('probe')) as Probe | undefined
+  if (last && now - last.at < PROBE_GAP_MS) return
+  await $.store.set('probe', { at: now } satisfies Probe)
+
+  const reply = await $.model.complete({
+    model: 'haiku',
+    prompt: 'ok',
+    maxTokens: 8,
+    effort: 'low',
+    timeoutMs: 20_000,
+  })
+  const { rateLimits } = await $.session.usage()
+
+  await $.store.set('probe', {
+    at: now,
+    answered: reply.isAnswered,
+    error: reply.isAnswered ? undefined : reply.reason,
+    gotLimits: rateLimits.length > 0,
+  } satisfies Probe)
+}
+
+function messageOf(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+// Nella chat desktop (SDK, headless) $.session.compact rifiuta sempre:
+// lì la compattazione gira dentro un turno, come prompt /compact. In quel
+// caso si accoda /compact, che parte appena la chat è ferma.
+export async function compactNow($: EngineInterface): Promise<void> {
+  try {
+    const result = await $.session.compact()
+    if ('skip' in result) $.ui.toast(`Compattazione annullata: ${result.skip}`)
+  } catch (err) {
+    if (!messageOf(err).includes('headless')) throw err
+    await $.command.run({ command: 'compact' })
+  }
+}
+
+export function compactErrorText(err: unknown): string {
+  const message = messageOf(err)
+  if (message.includes('turn is in flight')) return 'Compattazione possibile solo a fine risposta'
+  return `Compattazione non riuscita: ${message}`
+}
+
 function same(a: Usage | null, b: Usage): boolean {
   return a !== null && JSON.stringify(a) === JSON.stringify(b)
 }
@@ -124,6 +176,15 @@ export const register: Register = on => {
 
     await refresh()
     $.clock.every(REFRESH_MS, () => void refresh())
+
+    const { rateLimits } = await $.session.usage()
+    if (rateLimits.length === 0) {
+      void probeLimits($)
+        .then(refresh)
+        .catch(() => {
+          // Senza richiesta restano gli ultimi valori salvati.
+        })
+    }
 
     return result
   })
@@ -181,10 +242,9 @@ export const register: Register = on => {
       await update($, isCompacting, () => true)
 
       try {
-        const result = await $.session.compact()
-        if ('skip' in result) $.ui.toast(`Compattazione annullata: ${result.skip}`)
-      } catch {
-        $.ui.toast('Compattazione possibile solo a fine risposta')
+        await compactNow($)
+      } catch (err) {
+        $.ui.toast(compactErrorText(err))
       } finally {
         await update($, isCompacting, () => false)
       }

@@ -7,7 +7,7 @@ Mod per Claude Code che mostra, sopra la casella in cui scrivi, una banda con:
 - **ctx**: quanto è pieno il contesto della chat (token usati / finestra);
 - un bottone **Compatta** che compatta il contesto come `/compact`.
 
-Le barre cambiano colore da verde ad arancione a rosso man mano che la percentuale sale, si aggiornano ogni pochi secondi anche durante una risposta e vanno a capo da sole quando la finestra è stretta. I limiti 5h e 7g sono dell'account: l'ultima lettura di una chat viene condivisa con le altre, così anche una chat appena aperta li mostra.
+Le barre cambiano colore da verde ad arancione a rosso man mano che la percentuale sale, si aggiornano ogni pochi secondi anche durante una risposta e vanno a capo da sole quando la finestra è stretta. I limiti 5h e 7g sono dell'account: l'ultima lettura di una chat viene condivisa con le altre, così anche una chat appena aperta li mostra. All'avvio, se nessuna chat ha ancora un dato, la mod fa una sola richiesta minima a Haiku (pochi token, al massimo una ogni due minuti per tutte le chat) per caricare subito i valori esatti.
 
 ## Installazione
 
