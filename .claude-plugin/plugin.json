@@ -1,5 +1,5 @@
 {
-  "name": "barra-utilizzo",
+  "name": "redline-mod",
   "version": "0.1.0",
   "license": "GPL-3.0-only",
   "description": "Banda sopra il prompt con limite di 5 ore, limite settimanale e riempimento del contesto, colori dinamici e bottone Compatta",

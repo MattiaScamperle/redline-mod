@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 const BAND = {
-  plugin: 'barra-utilizzo',
+  plugin: 'redline-mod',
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,

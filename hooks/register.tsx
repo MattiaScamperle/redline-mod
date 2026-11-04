@@ -3,9 +3,9 @@ import type { EngineInterface, Register, SessionContextUsage, SessionRateLimit }
 
 import type { Usage } from '../types'
 
-const usage = atom({ plugin: 'barra-utilizzo', key: 'usage' } as const, null)
-const isCompacting = atom({ plugin: 'barra-utilizzo', key: 'isCompacting' } as const, false)
-const minute = atom({ plugin: 'barra-utilizzo', key: 'minute' } as const, 0)
+const usage = atom({ plugin: 'redline-mod', key: 'usage' } as const, null)
+const isCompacting = atom({ plugin: 'redline-mod', key: 'isCompacting' } as const, false)
+const minute = atom({ plugin: 'redline-mod', key: 'minute' } as const, 0)
 
 const CELLS = 8
 const REFRESH_MS = 5000

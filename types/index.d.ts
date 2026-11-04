@@ -10,6 +10,6 @@ export type Usage = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'barra-utilizzo': { usage: Usage | null; isCompacting: boolean; minute: number }
+    'redline-mod': { usage: Usage | null; isCompacting: boolean; minute: number }
   }
 }

@@ -1,11 +1,11 @@
 {
-  "name": "barra-utilizzo",
+  "name": "redline-mod",
   "owner": {
     "name": "MattiaScamperle"
   },
   "plugins": [
     {
-      "name": "barra-utilizzo",
+      "name": "redline-mod",
       "source": "./"
     }
   ],

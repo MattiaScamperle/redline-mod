@@ -1,4 +1,4 @@
-# barra-utilizzo
+# redline-mod
 
 Mod per Claude Code che mostra, sopra la casella in cui scrivi, una banda con:
 
@@ -14,16 +14,16 @@ Le barre cambiano colore da verde ad arancione a rosso man mano che la percentua
 Al prompt di una sessione Claude Code nel terminale:
 
 ```
-/plugin install barra-utilizzo --marketplace MattiaScamperle/barra-utilizzo
+/plugin install redline-mod --marketplace MattiaScamperle/redline-mod
 ```
 
 Da una shell:
 
 ```bash
-claude plugin install barra-utilizzo --marketplace MattiaScamperle/barra-utilizzo
+claude plugin install redline-mod --marketplace MattiaScamperle/redline-mod
 ```
 
-Nell'app desktop, dove `/plugin` non è disponibile: clicca + accanto alla casella del prompt, poi Plugins, Add marketplace con `MattiaScamperle/barra-utilizzo`, poi Add plugin.
+Nell'app desktop, dove `/plugin` non è disponibile: clicca + accanto alla casella del prompt, poi Plugins, Add marketplace con `MattiaScamperle/redline-mod`, poi Add plugin.
 
 ## Licenza
 
