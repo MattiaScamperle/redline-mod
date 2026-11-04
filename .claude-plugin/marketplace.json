@@ -1,0 +1,13 @@
+{
+  "name": "barra-utilizzo",
+  "owner": {
+    "name": "MattiaScamperle"
+  },
+  "plugins": [
+    {
+      "name": "barra-utilizzo",
+      "source": "./"
+    }
+  ],
+  "description": "Barra di utilizzo per Claude Code: limiti 5h e 7g, contesto, Compatta"
+}
