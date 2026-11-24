@@ -11,14 +11,21 @@ const CELLS = 8
 const REFRESH_MS = 5000
 const PROBE_GAP_MS = 2 * 60_000
 const ESTIMATE_GAP_MS = 60_000
+// Compatta sparisce sotto HIDE_BELOW% di contesto e si evidenzia sopra WARN_ABOVE%.
+const HIDE_BELOW = 26
+const WARN_ABOVE = 70
+const FIVE_HOUR_MS = 5 * 3_600_000
+const WEEK_MS = 7 * 86_400_000
 
 type Rgb = [number, number, number]
 
-// Verde a 0%, arancione a 60%, rosso a 100%.
-const GREEN: Rgb = [34, 197, 94]
-const ORANGE: Rgb = [249, 115, 22]
-const RED: Rgb = [239, 68, 68]
-const MID = 60
+// Sfumatura: verde a 0%, giallo a 35%, arancione a 60%, rosso a 100%.
+const STOPS: [number, Rgb][] = [
+  [0, [34, 197, 94]],
+  [35, [234, 179, 8]],
+  [60, [249, 115, 22]],
+  [100, [239, 68, 68]],
+]
 
 function toUsage(context: SessionContextUsage, rateLimits: SessionRateLimit[]): Usage {
   const fiveHour = rateLimits.find(limit => limit.kind === 'five_hour')
@@ -42,21 +49,21 @@ function clamp(percent: number): number {
 
 function colorFor(percent: number): string {
   const p = clamp(percent)
-  const [a, b, t] = p <= MID ? [GREEN, ORANGE, p / MID] : [ORANGE, RED, (p - MID) / (100 - MID)]
-  const mix = (i: 0 | 1 | 2) =>
-    Math.round(a[i] + (b[i] - a[i]) * t).toString(16).padStart(2, '0')
+  const i = Math.max(1, STOPS.findIndex(([at]) => p <= at))
+  const [from, a] = STOPS[i - 1]!
+  const [to, b] = STOPS[i]!
+  const t = (p - from) / (to - from)
+  const mix = (k: 0 | 1 | 2) =>
+    Math.round(a[k] + (b[k] - a[k]) * t).toString(16).padStart(2, '0')
 
   return `#${mix(0)}${mix(1)}${mix(2)}`
 }
 
-// Linea sottile: pieno ━, vuoto ─.
-function bar(percent: number): { filled: string; track: string } {
+// Linea sottile: pieno ━ (una cella per colore della sfumatura), vuoto ─.
+function bar(percent: number): { full: number; track: string } {
   const full = Math.round((clamp(percent) / 100) * CELLS)
 
-  return {
-    filled: '━'.repeat(full),
-    track: '─'.repeat(CELLS - full),
-  }
+  return { full, track: '─'.repeat(CELLS - full) }
 }
 
 function tokens(n: number): string {
@@ -64,7 +71,19 @@ function tokens(n: number): string {
   return n >= 1000 ? `${Math.round(n / 1000)}k` : `${n}`
 }
 
-function resetIn(resetsAt: string, now: number): string | null {
+const DAYS = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab']
+
+// Ora locale del reset, preceduta dal giorno se non è oggi (o se alwaysDay).
+export function clockAt(at: Date, now: number, alwaysDay: boolean): string {
+  const pad = (n: number) => `${n}`.padStart(2, '0')
+  const time = `${pad(at.getHours())}:${pad(at.getMinutes())}`
+
+  return alwaysDay || at.toDateString() !== new Date(now).toDateString()
+    ? `${DAYS[at.getDay()]} ${time}`
+    : time
+}
+
+function resetIn(resetsAt: string, now: number, alwaysDay: boolean): string | null {
   const minutes = Math.round((Date.parse(resetsAt) - now) / 60000)
   if (Number.isNaN(minutes)) return null
   if (minutes <= 0) return 'reset a breve'
@@ -72,9 +91,32 @@ function resetIn(resetsAt: string, now: number): string | null {
   const d = Math.floor(minutes / 1440)
   const h = Math.floor((minutes % 1440) / 60)
   const m = minutes % 60
+  const left = d > 0 ? `${d}g ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`
 
-  if (d > 0) return `reset ${d}g ${h}h`
-  return h > 0 ? `reset ${h}h ${m}m` : `reset ${m}m`
+  return `reset ${clockAt(new Date(resetsAt), now, alwaysDay)} · ${left}`
+}
+
+// Ritmo: consumo medio dall'inizio della finestra, proiettato in avanti.
+// Nulla da dire se non arriva a 100% prima del reset o se la finestra è
+// appena iniziata (meno del 5%: la stima sarebbe rumore).
+export function paceText(
+  percent: number | undefined,
+  resetsAt: string | undefined,
+  windowMs: number,
+  now: number,
+  what: string,
+  alwaysDay: boolean,
+): string | null {
+  if (percent === undefined || !resetsAt || percent <= 0 || percent >= 100) return null
+
+  const end = Date.parse(resetsAt)
+  const elapsed = now - (end - windowMs)
+  if (Number.isNaN(end) || elapsed < windowMs * 0.05) return null
+
+  const eta = now + ((100 - percent) * elapsed) / percent
+  if (eta >= end) return null
+
+  return `~ a questo ritmo finisci ${what} ${clockAt(new Date(eta), now, alwaysDay)}`
 }
 
 
@@ -244,16 +286,25 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const compacting = await read($, isCompacting)
 
-    const meter = (label: string, percent: number | undefined, detail: string | null) => {
+    const meter = (
+      label: string,
+      percent: number | undefined,
+      detail: string | null,
+      pace: string | null = null,
+    ) => {
       const color = percent === undefined ? undefined : colorFor(percent)
-      const { filled, track } = bar(percent ?? 0)
+      const { full, track } = bar(percent ?? 0)
 
       return (
         <Box flexDirection="column" flexShrink={0}>
           <Box flexDirection="row" columnGap={1}>
             <Text dimColor>{label}</Text>
             <Box flexDirection="row">
-              {filled ? <Text color={color}>{filled}</Text> : null}
+              {Array.from({ length: full }, (_, i) => (
+                <Text key={i} color={colorFor(((i + 1) / CELLS) * 100)}>
+                  ━
+                </Text>
+              ))}
               <Text dimColor>{track}</Text>
             </Box>
             {percent === undefined ? (
@@ -267,6 +318,11 @@ export const register: Register = on => {
           {detail ? (
             <Text dimColor size="footnote">
               {detail}
+            </Text>
+          ) : null}
+          {pace ? (
+            <Text color={colorFor(60)} size="footnote">
+              {pace}
             </Text>
           ) : null}
         </Box>
@@ -286,7 +342,10 @@ export const register: Register = on => {
       }
     }
 
-    const reset = (resetsAt: string | undefined) => (resetsAt ? resetIn(resetsAt, now) : null)
+    // Percentuale ignota (contesto non ancora misurato): il bottone resta.
+    const showCompact = current.contextPercent === undefined || current.contextPercent >= HIDE_BELOW
+    const reset = (resetsAt: string | undefined, alwaysDay = false) =>
+      resetsAt ? resetIn(resetsAt, now, alwaysDay) : null
     const context =
       current.contextTokens === undefined
         ? `finestra ${tokens(current.contextWindow)}`
@@ -301,17 +360,29 @@ export const register: Register = on => {
         columnGap="md"
         rowGap="xs"
       >
-        {meter('5h', current.fiveHourPercent, reset(current.fiveHourResetsAt))}
-        {meter('7g', current.weekPercent, reset(current.weekResetsAt))}
+        {meter(
+          '5h',
+          current.fiveHourPercent,
+          reset(current.fiveHourResetsAt),
+          paceText(current.fiveHourPercent, current.fiveHourResetsAt, FIVE_HOUR_MS, now, 'le 5h', false),
+        )}
+        {meter(
+          '7g',
+          current.weekPercent,
+          reset(current.weekResetsAt, true),
+          paceText(current.weekPercent, current.weekResetsAt, WEEK_MS, now, 'la settimana', true),
+        )}
         {meter('ctx', current.contextPercent, context)}
-        <Box flexShrink={0}>
-          <Button
-            key="compatta"
-            variant="secondary"
-            label={compacting ? 'Compattazione…' : 'Compatta'}
-            onPress={compact}
-          />
-        </Box>
+        {showCompact ? (
+          <Box flexShrink={0}>
+            <Button
+              key="compatta"
+              variant={current.contextPercent !== undefined && current.contextPercent > WARN_ABOVE ? 'primary' : 'secondary'}
+              label={compacting ? 'Compattazione…' : 'Compatta'}
+              onPress={compact}
+            />
+          </Box>
+        ) : null}
       </Box>
     )
   })

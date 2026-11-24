@@ -34,18 +34,87 @@ test('la banda mostra 5 ore, settimana e contesto con colore dinamico', async ($
 
     expect((await ui.find({ type: 'Text', text: '0%' }))?.props.color).toBe('#22c55e')
     expect((await ui.find({ type: 'Text', text: '60%' }))?.props.color).toBe('#f97316')
-    expect((await ui.find({ type: 'Text', text: '━━━━━' }))?.props.color).toBe('#f97316')
+    // Una cella per colore: 0 + 5 + 2, la prima è il verde della sfumatura a 12,5%.
+    const cells = await ui.findAll({ type: 'Text', text: '━' })
+    expect(cells).toHaveLength(7)
+    expect(cells[0]?.props.color).toBe('#69bf3f')
     expect(await ui.find({ type: 'Text', text: '25%' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: '━━' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'reset 2h 15m' })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: 'reset 3g 2h' })).toBeDefined()
+    // Orari locali: 5h solo ora se è oggi, settimana sempre con giorno.
+    const pad = (n: number) => `${n}`.padStart(2, '0')
+    const five = new Date('2099-01-01T00:00:00Z')
+    const week = new Date('2099-01-03T23:45:00Z')
+    const day = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab']
+    const sameDay = five.toDateString() === new Date('2098-12-31T21:45:00Z').toDateString()
+    const fiveClock = `${sameDay ? '' : `${day[five.getDay()]} `}${pad(five.getHours())}:${pad(five.getMinutes())}`
+    expect(await ui.find({ type: 'Text', text: `reset ${fiveClock} · 2h 15m` })).toBeDefined()
+    expect(
+      await ui.find({
+        type: 'Text',
+        text: `reset ${day[week.getDay()]} ${pad(week.getHours())}:${pad(week.getMinutes())} · 3g 2h`,
+      }),
+    ).toBeDefined()
     expect(await ui.find({ type: 'Text', text: '50k / 200k' })).toBeDefined()
 
-    const button = await ui.find({ type: 'Button', key: 'compatta' })
-    expect(button?.props.variant).toBe('secondary')
-    expect(button?.props.plain).toBeUndefined()
+    // Contesto al 25%: sotto il 26% il bottone non si vede.
+    expect(await ui.find({ type: 'Button', key: 'compatta' })).toBeUndefined()
     await ui.unmount()
   }
+})
+
+for (const [percent, variant] of [
+  [26, 'secondary'],
+  [70, 'secondary'],
+  [71, 'primary'],
+] as const) {
+  test(`con contesto al ${percent}% il bottone Compatta è ${variant}`, async ($, on) => {
+    on('session.measure', (_, e) => ({ changed: e.changed }))
+    mock.store(on)
+    on('clock.now', () => ({ value: 0 }))
+
+    await $.session.measure({
+      context: { tokens: percent * 2000, window: 200_000, percent },
+      rateLimits: [],
+      changed: ['context'],
+    })
+
+    const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+    const button = await ui.find({ type: 'Button', key: 'compatta' })
+    expect(button?.props.variant).toBe(variant)
+    expect(button?.props.plain).toBeUndefined()
+    await ui.unmount()
+  })
+}
+
+test('il ritmo dice quando finiscono le 5h solo se arrivano a 100% prima del reset', async ($, on) => {
+  on('session.measure', (_, e) => ({ changed: e.changed }))
+  mock.store(on)
+  on('clock.now', () => ({ value: Date.parse('2098-12-31T21:45:00Z') }))
+
+  // Finestra 19:00Z-00:00Z, 2h45m trascorse: il 60% finisce alle 23:35Z, il 10% no.
+  await $.session.measure({
+    context: { tokens: 50_000, window: 200_000, percent: 25 },
+    rateLimits: [
+      { kind: 'five_hour', percentUsed: 60, resetsAt: '2099-01-01T00:00:00Z' },
+      { kind: 'seven_day', percentUsed: 10, resetsAt: '2099-01-03T23:45:00Z' },
+    ],
+    changed: ['context', 'rateLimits'],
+  })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
+  const eta = new Date('2098-12-31T23:35:00Z')
+  const pad = (n: number) => `${n}`.padStart(2, '0')
+  const clock = `${pad(eta.getHours())}:${pad(eta.getMinutes())}`
+  const today = eta.toDateString() === new Date('2098-12-31T21:45:00Z').toDateString()
+  const day = ['dom', 'lun', 'mar', 'mer', 'gio', 'ven', 'sab'][eta.getDay()]
+
+  expect(
+    await ui.find({
+      type: 'Text',
+      text: `~ a questo ritmo finisci le 5h ${today ? '' : `${day} `}${clock}`,
+    }),
+  ).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /la settimana/ })).toBeUndefined()
+  await ui.unmount()
 })
 
 test('il rosso arriva a 100% e i limiti mancanti sono n/d', async ($, on) => {
@@ -62,7 +131,9 @@ test('il rosso arriva a 100% e i limiti mancanti sono n/d', async ($, on) => {
   const ui = await $.ui.mount({ ...BAND, surface: 'desktop' })
 
   expect((await ui.find({ type: 'Text', text: '100%' }))?.props.color).toBe('#ef4444')
-  expect(await ui.find({ type: 'Text', text: '━━━━━━━━' })).toBeDefined()
+  const cells = await ui.findAll({ type: 'Text', text: '━' })
+  expect(cells).toHaveLength(8)
+  expect(cells[7]?.props.color).toBe('#ef4444')
   expect(await ui.findAll({ type: 'Text', text: 'n/d' })).toHaveLength(2)
   expect(await ui.find({ type: 'Text', text: '200k / 200k' })).toBeDefined()
   await ui.unmount()
