@@ -110,7 +110,7 @@ test('il ritmo dice quando finiscono le 5h solo se arrivano a 100% prima del res
   expect(
     await ui.find({
       type: 'Text',
-      text: `~ a questo ritmo finisci le 5h ${today ? '' : `${day} `}${clock}`,
+      text: `A questo ritmo finisci le 5h ${today ? '' : `${day} `}alle ${clock}`,
     }),
   ).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /la settimana/ })).toBeUndefined()

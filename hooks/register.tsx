@@ -16,7 +16,6 @@ const HIDE_BELOW = 26
 const WARN_ABOVE = 70
 const FIVE_HOUR_MS = 5 * 3_600_000
 const WEEK_MS = 7 * 86_400_000
-
 type Rgb = [number, number, number]
 
 // Sfumatura: verde a 0%, giallo a 35%, arancione a 60%, rosso a 100%.
@@ -116,7 +115,10 @@ export function paceText(
   const eta = now + ((100 - percent) * elapsed) / percent
   if (eta >= end) return null
 
-  return `~ a questo ritmo finisci ${what} ${clockAt(new Date(eta), now, alwaysDay)}`
+  // "Ven 19:10" diventa "Ven alle 19:10"; senza giorno, "alle 19:10".
+  const when = clockAt(new Date(eta), now, alwaysDay)
+
+  return `A questo ritmo finisci ${what} ${when.includes(' ') ? when.replace(' ', ' alle ') : `alle ${when}`}`
 }
 
 

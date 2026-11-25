@@ -1,6 +1,6 @@
 {
   "name": "redline-mod",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "GPL-3.0-only",
   "description": "Banda sopra il prompt con limite di 5 ore, limite settimanale e riempimento del contesto, colori dinamici e bottone Compatta",
   "types": "./types/index.d.ts"
