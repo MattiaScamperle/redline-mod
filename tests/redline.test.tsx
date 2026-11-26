@@ -7,6 +7,7 @@ const BAND = {
   component: 'AbovePrompt',
   props: {
     hasSurvey: false,
+    isCollapsed: false,
     isWorking: false,
     maxRows: 10,
     bodyColumns: 80,
@@ -200,7 +201,7 @@ test('la barra si aggiorna da sola durante la sessione', async ($, on) => {
       startedAt: '2099-01-01T00:00:00Z',
       context: { tokens: percent * 2000, window: 200_000, percent },
       rateLimits: [],
-    },
+    } as never,
   }))
 
   await $.session.start({ cwd: '/progetto', surface: 'desktop', isInteractive: true })
@@ -407,7 +408,7 @@ test("all'avvio senza limiti una sola richiesta minima li carica subito", async 
               { kind: 'five_hour', percentUsed: 12, resetsAt: '2099-01-01T00:00:00Z' },
               { kind: 'seven_day', percentUsed: 73, resetsAt: '2099-01-03T23:45:00Z' },
             ],
-    },
+    } as never,
   }))
 
   await $.session.start({ cwd: '/progetto', surface: 'desktop', isInteractive: true })

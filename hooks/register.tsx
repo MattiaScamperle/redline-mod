@@ -303,7 +303,7 @@ export const register: Register = on => {
             <Text dimColor>{label}</Text>
             <Box flexDirection="row">
               {Array.from({ length: full }, (_, i) => (
-                <Text key={i} color={colorFor(((i + 1) / CELLS) * 100)}>
+                <Text key={String(i)} color={colorFor(((i + 1) / CELLS) * 100)}>
                   ━
                 </Text>
               ))}
